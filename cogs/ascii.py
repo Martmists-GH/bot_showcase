@@ -1,12 +1,12 @@
 from io import BytesIO
-
+from typing import Union, List
+from urllib.parse import urlparse
 from PIL import Image, ImageDraw as ID, ImageFont, ImageOps
 from aiohttp import ClientSession
 from discord import File
 from discord.ext.commands import command
-
 import numpy as np
-
+from webp import WebPAnimEncoder, WebPPicture, WebPAnimEncoderOptions
 
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -23,19 +23,67 @@ class AsciiCog:
         self.default = ID.Draw(Image.new("RGB", (128, 128)))
         self.font = ImageFont.truetype("assets/CourierNew.ttf", 18)
 
-    def get_height(self, img: Image) -> int:
+    def get_height(self, img: Image.Image) -> int:
         w, h = img.size
         ratio = self.width / w
         new_height = h * ratio
         return new_height
 
     @staticmethod
-    def get_invert(img: Image) -> bool:
-        data_img = np.sum(np.asarray(img), axis=2)
+    def get_invert(img: Image.Image) -> bool:
+        data_img = np.sum(np.asarray(img))
         invert = np.sum(data_img >= data_img.max() - 5) < np.sum(data_img <= data_img.min() + 5)
         return bool(invert)
 
-    def stringify(self, img: Image, inv: bool = False) -> str:
+    def stringify(self, img: Image.Image, filename: str) -> BytesIO:
+        file = urlparse(filename).path
+        inv = self.get_invert(img)
+        if file.endswith("gif"):
+            self.width /= 2
+            duration = img.info['duration']
+            frames = self.stringify_gif(img, inv)
+            gif = self.string_to_gif(frames, duration*2/img.n_frames, inv)
+            self.width *= 2
+            return gif
+
+        elif any(file.endswith(x) for x in ("png", "jpg", "jpeg")):
+            string = self.stringify_image(img, inv)
+            return self.string_to_png(string, inv)
+        raise Exception("Unsupported file type")
+
+    def stringify_gif(self, img: Image.Image, inv: bool = False) -> List[str]:
+        frames = []
+        current = img.convert("RGBA")
+        while True:
+            try:
+                frames.append(self.stringify_image(current.convert("RGB"), inv))
+                img.seek(img.tell()+1)
+                current = Image.alpha_composite(current, img.convert('RGBA'))
+            except EOFError:
+                break
+
+        return frames
+
+    def string_to_gif(self, frames: List[str], duration: float, inv: bool = False) -> BytesIO:
+        as_images = [self.string_to_png(frame, inv, True) for frame in frames]
+
+        b = BytesIO()
+        # as_images[0].save(b, format='gif', duration=duration/2, save_all=True, append_images=as_images[1:], loop=100)
+
+        enc = WebPAnimEncoder.new(*as_images[0].size, WebPAnimEncoderOptions.new(minimize_size=True))
+        t = 0
+        for img in as_images:
+            pic = WebPPicture.from_pil(img)
+            enc.encode_frame(pic, round(t))
+            t += duration
+
+        data = enc.assemble(round(t))
+        b.write(data.buffer())
+
+        b.seek(0)
+        return b
+
+    def stringify_image(self, img: Image.Image, inv: bool = False) -> str:
         if inv:
             img = ImageOps.invert(img.convert("RGB"))
         new_size = (round(self.width * self.width_correction * self.image_scale),
@@ -53,11 +101,13 @@ class AsciiCog:
 
         return stringified_img
 
-    def string_to_png(self, ascii_: str, inv: bool = False) -> BytesIO:
+    def string_to_png(self, ascii_: str, inv: bool = False, as_img: bool = False) -> Union[BytesIO, Image.Image]:
         w, h = self.default.textsize(ascii_, font=self.font)
         blank = Image.new("RGB", (w, h), [WHITE, BLACK][inv])
         draw = ID.Draw(blank)
         draw.text((0, 0), ascii_, [BLACK, WHITE][inv], font=self.font)
+        if as_img:
+            return blank
         fp = BytesIO()
         blank.save(fp, format="png")
         fp.seek(0)
@@ -71,7 +121,7 @@ class AsciiCog:
 
         img = Image.open(BytesIO(data))
         inv = self.get_invert(img)
-        stringified = self.stringify(img, inv)
+        stringified = self.stringify_image(img, inv)
         reimaged = self.string_to_png(stringified, inv)
         await ctx.send(file=File(reimaged, filename="ascii.png"))
 
@@ -85,15 +135,18 @@ def test(core):
 
     def test_file(f: str):
         img = Image.open(f)
-        inv = cog.get_invert(img)
-        text = cog.stringify(img, inv)
-        print(text)
-        bytes_io = cog.string_to_png(text, inv)
-        img = Image.open(bytes_io)
-        img.show()
-        img.save(f"{f}_test.png")
+        *path, ext = f.split(".")
+        if ext == "gif":
+            ext = "webp"
+        elif ext in ("jpeg", "jpg"):
+            ext = "png"
+        fn = ".".join(path)
+        bytes_io = cog.stringify(img, f)
+        with open(f"{fn}_ascii.{ext}", "wb") as f:
+            f.write(bytes_io.read())
 
-    test_file("assets/avatar_discord.png")
-    test_file("assets/avatar_discord_2.png")
-    test_file("assets/avatar_discord_3.png")
-    test_file("assets/lewd.png")
+    # test_file("assets/avatar_discord.png")
+    # test_file("assets/avatar_discord_2.png")
+    # test_file("assets/avatar_discord_3.png")
+    # test_file("assets/lemon.jpg")
+    test_file("assets/rocket_league.gif")
