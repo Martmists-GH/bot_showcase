@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 from PIL import Image, ImageDraw as ID, ImageFont, ImageOps
 from aiohttp import ClientSession
 from discord import File
-from discord.ext.commands import command
+from discord.ext.commands import command, Bot
 import numpy as np
 from webp import WebPAnimEncoder, WebPPicture, WebPAnimEncoderOptions
 
@@ -42,7 +42,7 @@ class AsciiCog:
             self.width /= 2
             duration = img.info['duration']
             frames = self.stringify_gif(img, inv)
-            gif = self.string_to_gif(frames, duration*2/img.n_frames, inv)
+            gif = self.string_to_gif(frames, duration, inv)
             self.width *= 2
             return gif
 
@@ -126,27 +126,5 @@ class AsciiCog:
         await ctx.send(file=File(reimaged, filename="ascii.png"))
 
 
-def setup(core):
-    pass
-
-
-def test(core):
-    cog = AsciiCog()
-
-    def test_file(f: str):
-        img = Image.open(f)
-        *path, ext = f.split(".")
-        if ext == "gif":
-            ext = "webp"
-        elif ext in ("jpeg", "jpg"):
-            ext = "png"
-        fn = ".".join(path)
-        bytes_io = cog.stringify(img, f)
-        with open(f"{fn}_ascii.{ext}", "wb") as f:
-            f.write(bytes_io.read())
-
-    # test_file("assets/avatar_discord.png")
-    # test_file("assets/avatar_discord_2.png")
-    # test_file("assets/avatar_discord_3.png")
-    # test_file("assets/lemon.jpg")
-    test_file("assets/rocket_league.gif")
+def setup(core: Bot):
+    core.add_cog(AsciiCog(core))
