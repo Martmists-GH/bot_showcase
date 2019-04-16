@@ -70,7 +70,6 @@ class EvalCog:
         if input_.strip() in ("exit", "exit()", "quit", "quit()"):
             return self.fmt.exit(input_.strip()), {}, False
 
-        """
         ctx = {
             "message": ctx.message,
             "author": ctx.author,
@@ -79,8 +78,6 @@ class EvalCog:
             "ctx": ctx,
             "me": ctx.me
         }
-        """
-        ctx = {}
 
         return input_.strip(), ctx, True
 
@@ -116,20 +113,3 @@ class EvalCog:
 
 def setup(core: Bot):
     core.add_cog(EvalCog(core))
-
-
-if __name__ == "__main__":
-    import asyncio
-    for fmt in (SimpleEvalFormatter, IPythonEvalFormatter):
-        cog = EvalCog(None, fmt())
-        x = asyncio.run(cog.do_eval("x = 1", None))
-        y = asyncio.run(cog.do_eval("y = x + 5\nprint(y)", None))
-        z = asyncio.run(cog.do_eval("import asyncio\nawait asyncio.sleep(1)\nreturn {k:k**2 for k in range(20)}", None))
-        a = asyncio.run(cog.do_eval("quit", None))
-        b = asyncio.run(cog.do_eval("x + y", None))
-        print("-"*40)
-        print(x)
-        print(y)
-        print(z)
-        print(a)
-        print(b)
