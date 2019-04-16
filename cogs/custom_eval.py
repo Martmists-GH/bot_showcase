@@ -44,7 +44,7 @@ class EvalCog:
         lines = [line.strip() for line in stmt.split("\n") if line.strip()]
         stmt = "\n".join(lines)
         self.env.update(env)
-        if len(lines) == 1 and not re.search(r"[\wa-zA-Z0-9]=[\wa-zA-Z0-9]", stmt):  # make sure there's no assignment
+        if len(lines) == 1 and not re.search(r"[^><!=~+\-\/*%\/]=[^=]", stmt):  # make sure there's no assignment
             try:
                 compile("_ = " + stmt, "<repl>", "exec")
                 stmt = "_ = " + stmt + "\nif inspect.isawaitable(_):\n    _ = await _\nreturn _"
