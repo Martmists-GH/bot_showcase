@@ -59,7 +59,9 @@ class EvalCog:
         try:
             res = await func()
         except Exception:
-            self.buffer.write(format_exc())
+            lines = format_exc().split("\n")
+            lines = [lines[0], *lines[3:]]
+            self.buffer.write("\n".join(lines))
             res = None
 
         del self.env["do_eval_af941e"]
