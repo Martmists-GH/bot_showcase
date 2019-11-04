@@ -4,7 +4,7 @@ import re
 from io import StringIO
 from textwrap import indent
 from traceback import format_exc
-from typing import Tuple, Any, Union
+from typing import Tuple, Any, Union, Optional
 
 import discord
 from discord import Embed
@@ -13,19 +13,18 @@ from discord.ext.commands import Context, command, Bot
 from core.formatters import EvalFormatter, SimpleEvalFormatter, IPythonEvalFormatter
 
 EVAL_FMT = """
-async def do_eval_af941e():  # random af name
-    try:
-        with contextlib.redirect_stdout(self.buffer):
+try:
+    with contextlib.redirect_stdout(self.buffer):
 {body}
-    finally:
-        self.env.update(locals())
+finally:
+    self.env.update(locals())
 """.strip()
 
 
 class EvalCog:
-    def __init__(self, bot, fmt: EvalFormatter = SimpleEvalFormatter()):
+    def __init__(self, bot, fmt: Optional[EvalFormatter] = None):
         self.buffer = StringIO()
-        self.fmt = fmt
+        self.fmt = fmt or SimpleEvalFormatter()
         self.bot = bot
         self.env = {}
         self.init_env()
@@ -39,23 +38,22 @@ class EvalCog:
             "discord": discord,
         }
 
-    async def any_eval(self, stmt: str, env: dict):  # pass loop if async
+    async def any_eval(self, stmt: str, env: dict) -> Any:
         self.buffer.seek(0)
         lines = [line.strip() for line in stmt.split("\n") if line.strip()]
         stmt = "\n".join(lines)
         self.env.update(env)
         if len(lines) == 1 and not (';' in stmt or re.search(r"[^><!=~+\-\/*%]=[^=]", stmt)):  # make sure there's no assignment
             try:
-                compile("_ = " + stmt, "<repl>", "exec")
+                compile("_ = " + stmt, "<eval-repl>", "exec", ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
                 stmt = "_ = " + stmt + "\nif inspect.isawaitable(_):\n    _ = await _\nreturn _"
             except SyntaxError:
                 pass
 
-        _code = EVAL_FMT.format(body=indent(stmt, " "*12))
+        _code = EVAL_FMT.format(body=indent(stmt, " "*8))
 
-        exec(_code, self.env)
+        func = eval(compile(_code, "<eval-repl>", "exec", ast.PyCF_ALLOW_TOP_LEVEL_AWAIT), self.env)
 
-        func = self.env["do_eval_af941e"]
         try:
             res = await func()
         except Exception:
@@ -63,8 +61,6 @@ class EvalCog:
             lines = [lines[0], *lines[3:]]
             self.buffer.write("\n".join(lines))
             res = None
-
-        del self.env["do_eval_af941e"]
 
         return res
 
